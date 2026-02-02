@@ -344,7 +344,6 @@ export default function CRMDashboard() {
             </div>
           </div>
         </motion.div>
-        )}
       </div>
     );
   }
