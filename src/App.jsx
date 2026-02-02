@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, User, Eye, EyeOff, X, Calendar, Phone, Plus } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, X, Calendar, Phone, Plus, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://rzdcwnddiwjrdhtgqadl.supabase.co';
@@ -125,6 +125,21 @@ export default function CRMDashboard() {
     setSelectedClient(updatedClient);
   };
 
+  const deleteClient = async (clientId) => {
+    if (window.confirm('Tem certeza que deseja excluir este cliente?')) {
+      await supabase.from('clientes').delete().eq('id', clientId);
+      
+      setClients(prev => {
+        const newClients = { ...prev };
+        Object.keys(newClients).forEach(column => {
+          newClients[column] = newClients[column].filter(c => c.id !== clientId);
+        });
+        return newClients;
+      });
+      setSelectedClient(null);
+    }
+  };
+
   const addNewClient = async () => {
     const { data } = await supabase.from('clientes').insert([{ name: 'Novo Cliente', phone: '', status: 'initial', notes: '' }]).select().single();
     if (data) {
@@ -159,6 +174,20 @@ export default function CRMDashboard() {
         setRevenues([data, ...revenues]);
         setNewRevenue({ description: '', value: '', date: '' });
       }
+    }
+  };
+
+  const deleteExpense = async (expenseId) => {
+    if (window.confirm('Tem certeza que deseja excluir esta despesa?')) {
+      await supabase.from('despesas').delete().eq('id', expenseId);
+      setExpenses(expenses.filter(exp => exp.id !== expenseId));
+    }
+  };
+
+  const deleteRevenue = async (revenueId) => {
+    if (window.confirm('Tem certeza que deseja excluir esta receita?')) {
+      await supabase.from('receitas').delete().eq('id', revenueId);
+      setRevenues(revenues.filter(rev => rev.id !== revenueId));
     }
   };
 
@@ -338,11 +367,16 @@ export default function CRMDashboard() {
                     {revenues.map(rev => (
                       <div key={rev.id} className="p-3 rounded-lg bg-[#0d0d0c] border border-green-500/20">
                         <div className="flex justify-between items-start">
-                          <div>
+                          <div className="flex-1">
                             <p className="text-white font-medium">{rev.description}</p>
                             <p className="text-sm text-gray-400">{rev.date}</p>
                           </div>
-                          <p className="text-green-400 font-bold">R$ {rev.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                          <div className="flex items-center gap-3">
+                            <p className="text-green-400 font-bold">R$ {rev.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                            <button onClick={() => deleteRevenue(rev.id)} className="text-red-400 hover:text-red-300 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -355,11 +389,16 @@ export default function CRMDashboard() {
                     {expenses.map(exp => (
                       <div key={exp.id} className="p-3 rounded-lg bg-[#0d0d0c] border border-red-500/20">
                         <div className="flex justify-between items-start">
-                          <div>
+                          <div className="flex-1">
                             <p className="text-white font-medium">{exp.description}</p>
                             <p className="text-sm text-gray-400">{exp.date}</p>
                           </div>
-                          <p className="text-red-400 font-bold">R$ {exp.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                          <div className="flex items-center gap-3">
+                            <p className="text-red-400 font-bold">R$ {exp.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                            <button onClick={() => deleteExpense(exp.id)} className="text-red-400 hover:text-red-300 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -398,4 +437,25 @@ export default function CRMDashboard() {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-300 mb-2">Anotações</label>
-                      <textarea value={selectedClient.notes} onChange={(e) => updateClient({ ...selectedClient, notes: e.target.value })} rows={6} className="w-full px-4 py-3 rounded-lg bg-[#0d0d0c] border text-white focus:outline-none focus:ring-2 resize-none" style={{ borderColor: 'rgba(246, 197, 0, 0.3)' }} placeholder="Adicione
+                      <textarea value={selectedClient.notes || ''} onChange={(e) => updateClient({ ...selectedClient, notes: e.target.value })} rows={6} className="w-full px-4 py-3 rounded-lg bg-[#0d0d0c] border text-white focus:outline-none focus:ring-2 resize-none" style={{ borderColor: 'rgba(246, 197, 0, 0.3)' }} placeholder="Adicione notas sobre o cliente..."></textarea>
+                    </div>
+
+                    <div className="flex gap-3 pt-4">
+                      <button onClick={() => setSelectedClient(null)} className="flex-1 py-3 rounded-lg font-bold text-white bg-gray-600 hover:bg-gray-700 transition-all">
+                        Fechar
+                      </button>
+                      <button onClick={() => deleteClient(selectedClient.id)} className="flex-1 py-3 rounded-lg font-bold text-white bg-red-600 hover:bg-red-700 transition-all flex items-center justify-center gap-2">
+                        <Trash2 className="w-5 h-5" />
+                        Excluir Cliente
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
+    </div>
+  );
+}
