@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, User, Eye, EyeOff, X, Calendar, Phone, Plus } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+
+// Configuração do Supabase
+const supabaseUrl = 'https://rzdcwnddiwjrdhtgqadl.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6ZGN3bmRkaXdqcmRodGdxYWRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMzE2MTMsImV4cCI6MjA4NTYwNzYxM30.THei7FXpATfmfCU015XBJbLCkc2KsLox58x1m0xzwek';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function CRMDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -59,7 +65,7 @@ export default function CRMDashboard() {
     e.preventDefault();
   };
 
-  const handleDrop = (toColumn) => {
+  const handleDrop = async (toColumn) => {
     if (!draggedClient) return;
 
     const { client, fromColumn } = draggedClient;
@@ -69,17 +75,51 @@ export default function CRMDashboard() {
       return;
     }
 
+    // Atualizar no Supabase
+    const { error } = await supabase
+      .from('clientes')
+      .update({ 
+        status: toColumn,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', client.id);
+
+    if (error) {
+      console.error('Erro ao atualizar status:', error);
+      alert('Erro ao mover cliente');
+      return;
+    }
+
+    // Atualizar estado local
     setClients(prev => {
       const newClients = { ...prev };
       newClients[fromColumn] = newClients[fromColumn].filter(c => c.id !== client.id);
-      newClients[toColumn] = [...newClients[toColumn], { ...client, date: new Date().toISOString().split('T')[0] }];
+      newClients[toColumn] = [...newClients[toColumn], { ...client, status: toColumn }];
       return newClients;
     });
 
     setDraggedClient(null);
   };
 
-  const updateClient = (updatedClient) => {
+  const updateClient = async (updatedClient) => {
+    // Atualizar no Supabase
+    const { error } = await supabase
+      .from('clientes')
+      .update({
+        name: updatedClient.name,
+        phone: updatedClient.phone,
+        notes: updatedClient.notes,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', updatedClient.id);
+
+    if (error) {
+      console.error('Erro ao atualizar cliente:', error);
+      alert('Erro ao salvar alterações');
+      return;
+    }
+
+    // Atualizar estado local
     setClients(prev => {
       const newClients = { ...prev };
       Object.keys(newClients).forEach(column => {
@@ -93,30 +133,82 @@ export default function CRMDashboard() {
     setSelectedClient(updatedClient);
   };
 
-  const addNewClient = () => {
+  const addNewClient = async () => {
     const newClient = {
-      id: Date.now(),
       name: 'Novo Cliente',
       phone: '',
-      date: new Date().toISOString().split('T')[0],
+      status: 'initial',
       notes: ''
     };
+
+    // Inserir no Supabase
+    const { data, error } = await supabase
+      .from('clientes')
+      .insert([newClient])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Erro ao criar cliente:', error);
+      alert('Erro ao criar cliente');
+      return;
+    }
+
+    // Atualizar estado local
     setClients(prev => ({
       ...prev,
-      initial: [...prev.initial, newClient]
+      initial: [...prev.initial, data]
     }));
   };
 
-  const addExpense = () => {
+  const addExpense = async () => {
     if (newExpense.description && newExpense.value && newExpense.date) {
-      setExpenses([...expenses, { ...newExpense, id: Date.now(), value: parseFloat(newExpense.value) }]);
+      const expense = {
+        description: newExpense.description,
+        value: parseFloat(newExpense.value),
+        date: newExpense.date
+      };
+
+      // Inserir no Supabase
+      const { data, error } = await supabase
+        .from('despesas')
+        .insert([expense])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Erro ao adicionar despesa:', error);
+        alert('Erro ao adicionar despesa');
+        return;
+      }
+
+      setExpenses([data, ...expenses]);
       setNewExpense({ description: '', value: '', date: '' });
     }
   };
 
-  const addRevenue = () => {
+  const addRevenue = async () => {
     if (newRevenue.description && newRevenue.value && newRevenue.date) {
-      setRevenues([...revenues, { ...newRevenue, id: Date.now(), value: parseFloat(newRevenue.value) }]);
+      const revenue = {
+        description: newRevenue.description,
+        value: parseFloat(newRevenue.value),
+        date: newRevenue.date
+      };
+
+      // Inserir no Supabase
+      const { data, error } = await supabase
+        .from('receitas')
+        .insert([revenue])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Erro ao adicionar receita:', error);
+        alert('Erro ao adicionar receita');
+        return;
+      }
+
+      setRevenues([data, ...revenues]);
       setNewRevenue({ description: '', value: '', date: '' });
     }
   };
@@ -370,7 +462,7 @@ export default function CRMDashboard() {
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-400">
                     <Calendar className="w-4 h-4" />
-                    {client.date}
+                    {client.updated_at ? new Date(client.updated_at).toLocaleDateString('pt-BR') : 'Sem data'}
                   </div>
                 </motion.div>
               ))}
@@ -597,13 +689,13 @@ export default function CRMDashboard() {
                 {/* Data */}
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Data do Contato
+                    Última Atualização
                   </label>
                   <input
-                    type="date"
-                    value={selectedClient.date}
-                    onChange={(e) => updateClient({ ...selectedClient, date: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg bg-[#0d0d0c] border text-white focus:outline-none focus:ring-2"
+                    type="text"
+                    value={selectedClient.updated_at ? new Date(selectedClient.updated_at).toLocaleString('pt-BR') : 'Sem data'}
+                    disabled
+                    className="w-full px-4 py-3 rounded-lg bg-[#0d0d0c] border text-gray-500 cursor-not-allowed"
                     style={{ borderColor: 'rgba(246, 197, 0, 0.3)' }}
                   />
                 </div>
