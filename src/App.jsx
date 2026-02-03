@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, User, Eye, EyeOff, X, Calendar, Phone, Plus, Trash2 } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, X, Calendar, Phone, Plus, Trash2, Type, Palette, TextQuote, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://rzdcwnddiwjrdhtgqadl.supabase.co';
@@ -32,6 +32,19 @@ export default function CRMDashboard() {
   const [newRevenue, setNewRevenue] = useState({ description: '', value: '', date: '' });
   const [draggedClient, setDraggedClient] = useState(null);
 
+  // Estados para TO-DO LIST / Editor
+  const [editorText, setEditorText] = useState('');
+  const [editorFontSize, setEditorFontSize] = useState(16);
+  const [editorColor, setEditorColor] = useState('#ffffff');
+  const [editorFontFamily, setEditorFontFamily] = useState('Arial');
+
+  // Estados para Calendário
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [newEvent, setNewEvent] = useState({ title: '', time: '', description: '' });
+
   useEffect(() => {
     if (isAuthenticated) {
       loadData();
@@ -59,6 +72,19 @@ export default function CRMDashboard() {
 
       const { data: revenuesData } = await supabase.from('receitas').select('*').order('date', { ascending: false });
       if (revenuesData) setRevenues(revenuesData);
+
+      // Carregar dados do editor
+      const { data: editorData } = await supabase.from('editor_notes').select('*').order('updated_at', { ascending: false }).limit(1).single();
+      if (editorData) {
+        setEditorText(editorData.content || '');
+        setEditorFontSize(editorData.font_size || 16);
+        setEditorColor(editorData.color || '#ffffff');
+        setEditorFontFamily(editorData.font_family || 'Arial');
+      }
+
+      // Carregar eventos do calendário
+      const { data: eventsData } = await supabase.from('calendar_events').select('*').order('date', { ascending: true });
+      if (eventsData) setCalendarEvents(eventsData);
 
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -191,6 +217,83 @@ export default function CRMDashboard() {
     }
   };
 
+  // Funções para Editor
+  const saveEditorContent = async () => {
+    const editorContent = {
+      content: editorText,
+      font_size: editorFontSize,
+      color: editorColor,
+      font_family: editorFontFamily,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data: existing } = await supabase.from('editor_notes').select('id').limit(1).single();
+    
+    if (existing) {
+      await supabase.from('editor_notes').update(editorContent).eq('id', existing.id);
+    } else {
+      await supabase.from('editor_notes').insert([editorContent]);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated && currentTab === 'notes') {
+      const timer = setTimeout(() => {
+        saveEditorContent();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [editorText, editorFontSize, editorColor, editorFontFamily]);
+
+  // Funções para Calendário
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    return { daysInMonth, startingDayOfWeek, year, month };
+  };
+
+  const addCalendarEvent = async () => {
+    if (newEvent.title && selectedDate) {
+      const { data } = await supabase.from('calendar_events').insert([{
+        title: newEvent.title,
+        time: newEvent.time,
+        description: newEvent.description,
+        date: selectedDate
+      }]).select().single();
+      
+      if (data) {
+        setCalendarEvents([...calendarEvents, data]);
+        setNewEvent({ title: '', time: '', description: '' });
+        setShowEventModal(false);
+        setSelectedDate(null);
+      }
+    }
+  };
+
+  const deleteCalendarEvent = async (eventId) => {
+    if (window.confirm('Tem certeza que deseja excluir este evento?')) {
+      await supabase.from('calendar_events').delete().eq('id', eventId);
+      setCalendarEvents(calendarEvents.filter(evt => evt.id !== eventId));
+    }
+  };
+
+  const getEventsForDate = (dateStr) => {
+    return calendarEvents.filter(evt => evt.date === dateStr);
+  };
+
+  const previousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+
   const totalExpenses = expenses.reduce((sum, exp) => sum + exp.value, 0);
   const totalRevenues = revenues.reduce((sum, rev) => sum + rev.value, 0);
   const profit = totalRevenues - totalExpenses;
@@ -274,7 +377,12 @@ export default function CRMDashboard() {
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
                 <img src="images/logo.png" alt="Logo" className="h-12 w-auto object-contain" onError={(e) => e.target.style.display = 'none'} />
-                <h1 className="text-3xl font-bold text-white">{currentTab === 'pipeline' ? 'Pipeline de Vendas' : 'Dashboard Financeiro'}</h1>
+                <h1 className="text-3xl font-bold text-white">
+                  {currentTab === 'pipeline' && 'Pipeline de Vendas'}
+                  {currentTab === 'financeiro' && 'Dashboard Financeiro'}
+                  {currentTab === 'notes' && 'Bloco de Notas'}
+                  {currentTab === 'calendar' && 'Calendário'}
+                </h1>
               </div>
               {currentTab === 'pipeline' && (
                 <button onClick={addNewClient} className="flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-black transition-all" style={{ backgroundColor: '#f6c500' }} onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(246, 197, 0, 0.9)'} onMouseLeave={(e) => e.target.style.backgroundColor = '#f6c500'}>
@@ -287,6 +395,8 @@ export default function CRMDashboard() {
             <div className="flex gap-2 p-1 rounded-lg" style={{ background: 'rgba(255, 255, 255, 0.05)' }}>
               <button onClick={() => setCurrentTab('pipeline')} className="flex-1 py-3 px-6 rounded-lg font-bold transition-all" style={{ backgroundColor: currentTab === 'pipeline' ? '#f6c500' : 'transparent', color: currentTab === 'pipeline' ? '#000' : '#fff' }}>PIPELINE</button>
               <button onClick={() => setCurrentTab('financeiro')} className="flex-1 py-3 px-6 rounded-lg font-bold transition-all" style={{ backgroundColor: currentTab === 'financeiro' ? '#f6c500' : 'transparent', color: currentTab === 'financeiro' ? '#000' : '#fff' }}>FINANCEIRO</button>
+              <button onClick={() => setCurrentTab('notes')} className="flex-1 py-3 px-6 rounded-lg font-bold transition-all" style={{ backgroundColor: currentTab === 'notes' ? '#f6c500' : 'transparent', color: currentTab === 'notes' ? '#000' : '#fff' }}>NOTAS</button>
+              <button onClick={() => setCurrentTab('calendar')} className="flex-1 py-3 px-6 rounded-lg font-bold transition-all" style={{ backgroundColor: currentTab === 'calendar' ? '#f6c500' : 'transparent', color: currentTab === 'calendar' ? '#000' : '#fff' }}>CALENDÁRIO</button>
             </div>
           </div>
 
@@ -406,7 +516,195 @@ export default function CRMDashboard() {
                 </div>
               </div>
             </div>
-          )}
+          ) : currentTab === 'notes' ? (
+            <div className="space-y-6">
+              {/* Barra de Ferramentas do Editor */}
+              <div className="p-4 rounded-xl flex items-center gap-6 flex-wrap" style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(246, 197, 0, 0.2)' }}>
+                <div className="flex items-center gap-3">
+                  <Type className="w-5 h-5" style={{ color: '#f6c500' }} />
+                  <select value={editorFontFamily} onChange={(e) => setEditorFontFamily(e.target.value)} className="px-4 py-2 rounded-lg bg-[#0d0d0c] border text-white focus:outline-none focus:ring-2" style={{ borderColor: 'rgba(246, 197, 0, 0.3)' }}>
+                    <option value="Arial">Arial</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Comic Sans MS">Comic Sans MS</option>
+                    <option value="monospace">Monospace</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <TextQuote className="w-5 h-5" style={{ color: '#f6c500' }} />
+                  <select value={editorFontSize} onChange={(e) => setEditorFontSize(Number(e.target.value))} className="px-4 py-2 rounded-lg bg-[#0d0d0c] border text-white focus:outline-none focus:ring-2" style={{ borderColor: 'rgba(246, 197, 0, 0.3)' }}>
+                    {[12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48].map(size => (
+                      <option key={size} value={size}>{size}px</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Palette className="w-5 h-5" style={{ color: '#f6c500' }} />
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={editorColor} onChange={(e) => setEditorColor(e.target.value)} className="w-12 h-10 rounded-lg cursor-pointer bg-[#0d0d0c] border" style={{ borderColor: 'rgba(246, 197, 0, 0.3)' }} />
+                    <span className="text-white text-sm">{editorColor}</span>
+                  </div>
+                </div>
+
+                <div className="ml-auto text-sm text-gray-400">
+                  Salvamento automático ativo
+                </div>
+              </div>
+
+              {/* Área de Texto */}
+              <div className="rounded-xl p-6" style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(246, 197, 0, 0.2)', minHeight: '600px' }}>
+                <textarea value={editorText} onChange={(e) => setEditorText(e.target.value)} className="w-full h-full min-h-[560px] bg-transparent border-none focus:outline-none resize-none" style={{ color: editorColor, fontSize: `${editorFontSize}px`, fontFamily: editorFontFamily }} placeholder="Comece a escrever suas notas aqui..."></textarea>
+              </div>
+            </div>
+          ) : currentTab === 'calendar' ? (
+            <div className="space-y-6">
+              {/* Cabeçalho do Calendário */}
+              <div className="p-6 rounded-xl flex items-center justify-between" style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(246, 197, 0, 0.2)' }}>
+                <button onClick={previousMonth} className="p-2 rounded-lg transition-all hover:bg-[#f6c500]/10">
+                  <ChevronLeft className="w-6 h-6" style={{ color: '#f6c500' }} />
+                </button>
+                
+                <h2 className="text-2xl font-bold text-white">
+                  {currentMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}
+                </h2>
+                
+                <button onClick={nextMonth} className="p-2 rounded-lg transition-all hover:bg-[#f6c500]/10">
+                  <ChevronRight className="w-6 h-6" style={{ color: '#f6c500' }} />
+                </button>
+              </div>
+
+              {/* Grid do Calendário */}
+              <div className="p-6 rounded-xl" style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(246, 197, 0, 0.2)' }}>
+                {/* Dias da Semana */}
+                <div className="grid grid-cols-7 gap-2 mb-4">
+                  {['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'].map(day => (
+                    <div key={day} className="text-center font-bold text-gray-400 py-2">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Dias do Mês */}
+                <div className="grid grid-cols-7 gap-2">
+                  {(() => {
+                    const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
+                    const days = [];
+                    
+                    // Células vazias antes do primeiro dia
+                    for (let i = 0; i < startingDayOfWeek; i++) {
+                      days.push(<div key={`empty-${i}`} className="aspect-square"></div>);
+                    }
+                    
+                    // Dias do mês
+                    for (let day = 1; day <= daysInMonth; day++) {
+                      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                      const dayEvents = getEventsForDate(dateStr);
+                      const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
+                      
+                      days.push(
+                        <div key={day} onClick={() => { setSelectedDate(dateStr); setShowEventModal(true); }} className="aspect-square p-2 rounded-lg cursor-pointer transition-all hover:scale-105" style={{ background: isToday ? 'rgba(246, 197, 0, 0.2)' : 'rgba(255, 255, 255, 0.05)', border: `1px solid ${isToday ? '#f6c500' : 'rgba(246, 197, 0, 0.1)'}` }}>
+                          <div className="text-white font-bold mb-1">{day}</div>
+                          <div className="space-y-1">
+                            {dayEvents.slice(0, 2).map((evt, idx) => (
+                              <div key={idx} className="text-xs px-1 py-0.5 rounded truncate" style={{ backgroundColor: '#f6c500', color: '#000' }}>
+                                {evt.time} {evt.title}
+                              </div>
+                            ))}
+                            {dayEvents.length > 2 && (
+                              <div className="text-xs text-gray-400">+{dayEvents.length - 2} mais</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    return days;
+                  })()}
+                </div>
+              </div>
+
+              {/* Lista de Eventos */}
+              <div className="p-6 rounded-xl" style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(246, 197, 0, 0.2)' }}>
+                <h3 className="text-xl font-bold text-white mb-4">Próximos Eventos</h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {calendarEvents
+                    .filter(evt => new Date(evt.date) >= new Date(new Date().setHours(0, 0, 0, 0)))
+                    .sort((a, b) => new Date(a.date) - new Date(b.date))
+                    .map(evt => (
+                      <div key={evt.id} className="p-4 rounded-lg bg-[#0d0d0c] border border-[#f6c500]/20 flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <Calendar className="w-4 h-4" style={{ color: '#f6c500' }} />
+                            <span className="text-white font-bold">{evt.title}</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-sm text-gray-400 mb-1">
+                            <Clock className="w-4 h-4" />
+                            {new Date(evt.date).toLocaleDateString('pt-BR')} {evt.time && `- ${evt.time}`}
+                          </div>
+                          {evt.description && (
+                            <p className="text-sm text-gray-300 mt-2">{evt.description}</p>
+                          )}
+                        </div>
+                        <button onClick={() => deleteCalendarEvent(evt.id)} className="text-red-400 hover:text-red-300 transition-colors ml-4">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Modal para Adicionar Evento no Calendário */}
+          <AnimatePresence>
+            {showEventModal && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => { setShowEventModal(false); setSelectedDate(null); setNewEvent({ title: '', time: '', description: '' }); }}>
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="rounded-2xl p-6 max-w-md w-full" style={{ background: 'rgba(24, 24, 22, 0.98)', border: '1px solid rgba(246, 197, 0, 0.3)' }}>
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-2xl font-bold text-white">Novo Evento</h2>
+                    <button onClick={() => { setShowEventModal(false); setSelectedDate(null); setNewEvent({ title: '', time: '', description: '' }); }} className="text-gray-400 hover:text-white transition-colors">
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Data</label>
+                      <input type="text" value={selectedDate ? new Date(selectedDate).toLocaleDateString('pt-BR') : ''} disabled className="w-full px-4 py-3 rounded-lg bg-[#0d0d0c] border text-gray-500 cursor-not-allowed" style={{ borderColor: 'rgba(246, 197, 0, 0.3)' }} />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Título do Evento</label>
+                      <input type="text" value={newEvent.title} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-[#0d0d0c] border text-white focus:outline-none focus:ring-2" style={{ borderColor: 'rgba(246, 197, 0, 0.3)' }} placeholder="Ex: Reunião com cliente" />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Horário</label>
+                      <input type="time" value={newEvent.time} onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-[#0d0d0c] border text-white focus:outline-none focus:ring-2" style={{ borderColor: 'rgba(246, 197, 0, 0.3)' }} />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Descrição</label>
+                      <textarea value={newEvent.description} onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} rows={3} className="w-full px-4 py-3 rounded-lg bg-[#0d0d0c] border text-white focus:outline-none focus:ring-2 resize-none" style={{ borderColor: 'rgba(246, 197, 0, 0.3)' }} placeholder="Detalhes do evento..."></textarea>
+                    </div>
+
+                    <div className="flex gap-3 pt-4">
+                      <button onClick={() => { setShowEventModal(false); setSelectedDate(null); setNewEvent({ title: '', time: '', description: '' }); }} className="flex-1 py-3 rounded-lg font-bold text-white bg-gray-600 hover:bg-gray-700 transition-all">
+                        Cancelar
+                      </button>
+                      <button onClick={addCalendarEvent} className="flex-1 py-3 rounded-lg font-bold text-black transition-all" style={{ backgroundColor: '#f6c500' }} onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(246, 197, 0, 0.9)'} onMouseLeave={(e) => e.target.style.backgroundColor = '#f6c500'}>
+                        Adicionar
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <AnimatePresence>
             {selectedClient && (
