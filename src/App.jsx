@@ -427,7 +427,7 @@ export default function CRMDashboard() {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : currentTab === 'financeiro' ? (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="p-6 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05))', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
